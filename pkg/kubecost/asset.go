@@ -2757,6 +2757,29 @@ func (as *AssetSet) Insert(asset Asset) error {
 	return nil
 }
 
+// Delete Asset from AssetSet based on key determined from given Asset's properties
+func (as *AssetSet) Delete(asset Asset) error {
+	if as == nil {
+		return fmt.Errorf("cannot Delete nil AssetSet")
+	}
+
+	as.Lock()
+	defer as.Unlock()
+
+	// Determine key into which to Insert the Asset.
+	k, err := key(asset, as.aggregateBy)
+	if err != nil {
+		return err
+	}
+
+	// Add the given Asset to the existing entry, if there is one;
+	// otherwise just set directly into assets
+	if _, ok := as.assets[k]; ok {
+		delete(as.assets, k)
+	}
+	return nil
+}
+
 // IsEmpty returns true if the AssetSet is nil, or if it contains
 // zero assets.
 func (as *AssetSet) IsEmpty() bool {

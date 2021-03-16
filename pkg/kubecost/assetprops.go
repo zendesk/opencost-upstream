@@ -290,6 +290,48 @@ func (ap *AssetProperties) Merge(that *AssetProperties) *AssetProperties {
 	return result
 }
 
+// MergeLeft merges properties from parameter AssetProperties when values calling AssetProperties are empty
+func (ap *AssetProperties) MergeLeft(that *AssetProperties) *AssetProperties {
+	if ap == nil || that == nil {
+		return nil
+	}
+	if ap.Category == "" {
+		ap.Category = that.Category
+	}
+
+	if ap.Provider == "" {
+		ap.Provider = that.Provider
+	}
+
+	if ap.Account == "" {
+		ap.Account = that.Account
+	}
+
+	if ap.Project == "" {
+		ap.Project = that.Project
+	}
+
+	if ap.Service == "" {
+		ap.Service = that.Service
+	}
+
+	if ap.Cluster == "" {
+		ap.Cluster = that.Cluster
+	}
+
+	if ap.Name == "" {
+		ap.Name = that.Name
+	}
+
+	if ap.ProviderID == "" {
+		ap.ProviderID = that.ProviderID
+	}
+
+	return ap
+}
+
+
+
 // String represents the properties as a string
 func (ap *AssetProperties) String() string {
 	if ap == nil {
