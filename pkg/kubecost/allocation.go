@@ -1479,6 +1479,34 @@ func (as *AllocationSet) End() time.Time {
 	return *as.Window.End()
 }
 
+// ReconciliationMatch attempts to find an exact match in the AllocationSet on
+// properties "Load Balancer" If a match is found, it returns the Allocation with the
+// intent to adjust it. If that match is found, it returns the Allocation with the intent
+// to insert the associated Cloud cost.
+func (as *AllocationSet) ReconciliationMatch(query Allocation) (Allocation, error) {
+	as.RLock()
+	defer as.RUnlock()
+	lb, err := query.Properties.Get("Load Balancer")
+	if err != nil || lb == "" {
+		return Allocation{}, err
+	}
+
+	var lbMatch Allocation
+	for _, alloc := range as.allocations {
+		allocLB, _ := alloc.Properties.Get("Load Balancer")
+		if allocLB == lb {
+			lbMatch = *alloc
+		}
+	}
+
+	if (&Allocation{} == &lbMatch) {
+		return lbMatch, nil
+	}
+
+	return Allocation{}, fmt.Errorf("allocation not found to match %s", query)
+}
+
+
 // Get returns the Allocation at the given key in the AllocationSet
 func (as *AllocationSet) Get(key string) *Allocation {
 	as.RLock()

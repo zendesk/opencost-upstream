@@ -319,7 +319,7 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 	// cluster representing each cluster's unmounted PVs (if necessary).
 	applyUnmountedPVs(window, podMap, pvMap, pvcMap)
 
-	lbMap := getLoadBalancerCosts(resLBCostPerHr, resLBActiveMins, resolution)
+	lbMap := getLoadBalancerCosts(cm.Provider, resLBCostPerHr, resLBActiveMins, resolution)
 	applyLoadBalancersToPods(lbMap, allocsByService)
 
 	// (3) Build out AllocationSet from Pod map
@@ -1605,12 +1605,13 @@ func applyUnmountedPVCs(window kubecost.Window, podMap map[podKey]*Pod, pvcMap m
 
 // LB describes the start and end time of a Load Balancer along with cost
 type LB struct {
+	IP string
 	TotalCost float64
 	Start     time.Time
 	End       time.Time
 }
 
-func getLoadBalancerCosts(resLBCost, resLBActiveMins []*prom.QueryResult, resolution time.Duration) map[serviceKey]*LB {
+func getLoadBalancerCosts(cp cloud.Provider, resLBCost, resLBActiveMins []*prom.QueryResult, resolution time.Duration) map[serviceKey]*LB {
 	lbMap := make(map[serviceKey]*LB)
 	lbHourlyCosts := make(map[serviceKey]float64)
 	for _, res := range resLBCost {
@@ -1635,8 +1636,13 @@ func getLoadBalancerCosts(resLBCost, resLBActiveMins []*prom.QueryResult, resolu
 		s = s.Add(-resolution)
 		e := time.Unix(int64(res.Values[len(res.Values)-1].Timestamp), 0)
 		hours := e.Sub(s).Hours()
-
+		ip, err := res.GetString("ingress_ip")
+		if err != nil {
+			log.DedupedWarningf(5, "ClusterLoadBalancers: LB cost data missing ingress_ip")
+			ip = ""
+		}
 		lbMap[serviceKey] = &LB{
+			IP: cp.ParseLBID(ip),
 			TotalCost: lbHourlyCosts[serviceKey] * hours,
 			Start:     s,
 			End:       e,
@@ -1673,6 +1679,7 @@ func applyLoadBalancersToPods(lbMap map[serviceKey]*LB, allocsByService map[serv
 		// Distribute cost of service once total hours is calculated
 		for alloc, hours := range allocHours {
 			alloc.LoadBalancerCost += lb.TotalCost * hours / totalHours
+			alloc.Properties["Load Balancer"] = lb.IP
 		}
 	}
 }
