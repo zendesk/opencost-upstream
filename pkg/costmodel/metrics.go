@@ -535,25 +535,25 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 				// don't record cpuCost, ramCost, or gpuCost in the case of wild outliers
 				// k8s api sometimes causes cost spikes as described here:
 				// https://github.com/kubecost/cost-model/issues/927
-				if cpuCost < outlierFactor*avgCosts.CpuCostAverage {
-					cmme.CPUPriceRecorder.WithLabelValues(nodeName, nodeName, nodeType, nodeRegion, node.ProviderID).Set(cpuCost)
-					avgCosts.CpuCostAverage = (avgCosts.CpuCostAverage*avgCosts.NumCpuDataPoints + cpuCost) / (avgCosts.NumCpuDataPoints + 1)
-					avgCosts.NumCpuDataPoints += 1
-				} else {
-					log.Warningf("CPU cost outlier detected; skipping data point.")
-				}
-				if ramCost < outlierFactor*avgCosts.RamCostAverage {
-					cmme.RAMPriceRecorder.WithLabelValues(nodeName, nodeName, nodeType, nodeRegion, node.ProviderID).Set(ramCost)
-					avgCosts.RamCostAverage = (avgCosts.RamCostAverage*avgCosts.NumRamDataPoints + ramCost) / (avgCosts.NumRamDataPoints + 1)
-					avgCosts.NumRamDataPoints += 1
-				} else {
-					log.Warningf("RAM cost outlier detected; skipping data point.")
-				}
+				//if cpuCost < outlierFactor*avgCosts.CpuCostAverage {
+				cmme.CPUPriceRecorder.WithLabelValues(nodeName, nodeName, nodeType, nodeRegion, node.ProviderID).Set(cpuCost)
+				avgCosts.CpuCostAverage = (avgCosts.CpuCostAverage*avgCosts.NumCpuDataPoints + cpuCost) / (avgCosts.NumCpuDataPoints + 1)
+				avgCosts.NumCpuDataPoints += 1
+				//} else {
+				//	log.Warningf("CPU cost outlier detected; skipping data point.")
+				//}
+				//if ramCost < outlierFactor*avgCosts.RamCostAverage {
+				cmme.RAMPriceRecorder.WithLabelValues(nodeName, nodeName, nodeType, nodeRegion, node.ProviderID).Set(ramCost)
+				avgCosts.RamCostAverage = (avgCosts.RamCostAverage*avgCosts.NumRamDataPoints + ramCost) / (avgCosts.NumRamDataPoints + 1)
+				avgCosts.NumRamDataPoints += 1
+				//} else {
+				//	log.Warningf("RAM cost outlier detected; skipping data point.")
+				//}
 				// skip redording totalCost if any constituent costs were outliers
-				if cpuCost < outlierFactor*avgCosts.CpuCostAverage &&
-					ramCost < outlierFactor*avgCosts.RamCostAverage {
-					cmme.NodeTotalPriceRecorder.WithLabelValues(nodeName, nodeName, nodeType, nodeRegion, node.ProviderID).Set(totalCost)
-				}
+				//if cpuCost < outlierFactor*avgCosts.CpuCostAverage &&
+				//	ramCost < outlierFactor*avgCosts.RamCostAverage {
+				cmme.NodeTotalPriceRecorder.WithLabelValues(nodeName, nodeName, nodeType, nodeRegion, node.ProviderID).Set(totalCost)
+				//}
 
 				nodeCostAverages[labelKey] = avgCosts
 
