@@ -15,10 +15,11 @@ import (
 	"github.com/kubecost/cost-model/pkg/log"
 	"github.com/kubecost/cost-model/pkg/prom"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 )
 
 const (
-	queryFmtPods                     = `avg(kube_pod_container_status_running{}) by (pod, namespace, %s)[%s:%s]%s`
+	queryFmtPods                     = `avg(kube_pod_container_status_running{}) by (pod, namespace, uid, %s)[%s:%s]%s`
 	queryFmtRAMBytesAllocated        = `avg(avg_over_time(container_memory_allocation_bytes{container!="", container!="POD", node!=""}[%s]%s)) by (container, pod, namespace, node, %s, provider_id)`
 	queryFmtRAMRequests              = `avg(avg_over_time(kube_pod_container_resource_requests{resource="memory", unit="byte", container!="", container!="POD", node!=""}[%s]%s)) by (container, pod, namespace, node, %s)`
 	queryFmtRAMUsageAvg              = `avg(avg_over_time(container_memory_working_set_bytes{container!="", container_name!="POD", container!="POD"}[%s]%s)) by (container_name, container, pod_name, pod, namespace, instance, %s)`
@@ -110,7 +111,22 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 	clusterStart := map[string]time.Time{}
 	clusterEnd := map[string]time.Time{}
 
-	cm.buildPodMap(window, resolution, env.GetETLMaxBatchDuration(), podMap, clusterStart, clusterEnd)
+	podCollisionMap := make(map[podKey][]podKey)
+
+	cm.buildPodMap(window, resolution, env.GetETLMaxBatchDuration(), podMap, clusterStart, clusterEnd, podCollisionMap)
+
+	klog.Infof("***Build Pod Map finished for window: %s : %s***", window.Start().Format("Mon, 02 Jan 2006 15:04:05 MST"), window.End().Format("Mon, 02 Jan 2006 15:04:05 MST"))
+	klog.Infof("podMap for window:")
+	for key, _ := range podMap {
+		klog.Infof("POD %s", key.Pod)
+	}
+	klog.Infof("podCollisionMap for window:")
+	for key, collkeys := range podCollisionMap {
+		klog.Infof("Collision Key: %s has colliding pods:", key.Pod)
+		for _, collkey := range collkeys {
+			klog.Infof("%s", collkey.Pod)
+		}
+	}
 
 	// (2) Run and apply remaining queries
 
@@ -308,7 +324,7 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 	applyCPUCoresRequested(podMap, resCPURequests)
 	applyCPUCoresUsedAvg(podMap, resCPUUsageAvg)
 	applyCPUCoresUsedMax(podMap, resCPUUsageMax)
-	applyRAMBytesAllocated(podMap, resRAMBytesAllocated)
+	applyRAMBytesAllocated(podMap, resRAMBytesAllocated, podCollisionMap)
 	applyRAMBytesRequested(podMap, resRAMRequests)
 	applyRAMBytesUsedAvg(podMap, resRAMUsageAvg)
 	applyRAMBytesUsedMax(podMap, resRAMUsageMax)
@@ -517,7 +533,7 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 	return allocSet, nil
 }
 
-func (cm *CostModel) buildPodMap(window kubecost.Window, resolution, maxBatchSize time.Duration, podMap map[podKey]*Pod, clusterStart, clusterEnd map[string]time.Time) error {
+func (cm *CostModel) buildPodMap(window kubecost.Window, resolution, maxBatchSize time.Duration, podMap map[podKey]*Pod, clusterStart, clusterEnd map[string]time.Time, podCollisionMap map[podKey][]podKey) error {
 	// Assumes that window is positive and closed
 	start, end := *window.Start(), *window.End()
 
@@ -525,6 +541,8 @@ func (cm *CostModel) buildPodMap(window kubecost.Window, resolution, maxBatchSiz
 	resStr := timeutil.DurationString(resolution)
 
 	ctx := prom.NewNamedContext(cm.PrometheusClient, prom.AllocationContextName)
+
+	podUIDMap := make(map[podKey]string)
 
 	// Query for (start, end) by (pod, namespace, cluster) over the given
 	// window, using the given resolution, and if necessary in batches no
@@ -575,7 +593,21 @@ func (cm *CostModel) buildPodMap(window kubecost.Window, resolution, maxBatchSiz
 			return err
 		}
 
-		applyPodResults(window, resolution, podMap, clusterStart, clusterEnd, resPods)
+		var resPodsUID []*prom.QueryResult
+
+		for _, res := range resPods {
+			_, err := res.GetString("uid")
+			if err == nil {
+				resPodsUID = append(resPodsUID, res)
+			}
+		}
+
+		if len(resPodsUID) > 0 {
+			klog.Infof("UID emission detected for kube_container_status_running metric, using...")
+			resPods = resPodsUID
+		}
+
+		applyPodResults(window, resolution, podMap, clusterStart, clusterEnd, resPods, podUIDMap, podCollisionMap)
 
 		coverage = coverage.ExpandEnd(batchEnd)
 		numQuery++
@@ -584,7 +616,7 @@ func (cm *CostModel) buildPodMap(window kubecost.Window, resolution, maxBatchSiz
 	return nil
 }
 
-func applyPodResults(window kubecost.Window, resolution time.Duration, podMap map[podKey]*Pod, clusterStart, clusterEnd map[string]time.Time, resPods []*prom.QueryResult) {
+func applyPodResults(window kubecost.Window, resolution time.Duration, podMap map[podKey]*Pod, clusterStart, clusterEnd map[string]time.Time, resPods []*prom.QueryResult, podUIDMap map[podKey]string, podCollisionMap map[podKey][]podKey) {
 	for _, res := range resPods {
 		if len(res.Values) == 0 {
 			log.Warningf("CostModel.ComputeAllocation: empty minutes result")
@@ -604,7 +636,75 @@ func applyPodResults(window kubecost.Window, resolution time.Duration, podMap ma
 
 		namespace := labels["namespace"]
 		pod := labels["pod"]
-		key := newPodKey(cluster, namespace, pod)
+		key := newPodKey(cluster, namespace, pod) // CREATE PODKEY
+		klog.Infof("CURRENT KEY: %s", key.String())
+		uid, err := res.GetString("uid")
+		if err == nil {
+
+			if collidingPods, ok := podCollisionMap[key]; ok {
+
+				klog.Infof("Detected previous collision @ genkey [%s]...", key.Pod)
+
+				newKey := newPodKey(cluster, namespace, pod+" "+uid)
+
+				klog.Infof("NewKey created as %s...", newKey.Pod)
+
+				recordedCollision := false
+				for _, item := range collidingPods {
+					if item == newKey {
+						recordedCollision = true
+						break
+					}
+				}
+
+				if !recordedCollision {
+					podCollisionMap[key] = append(collidingPods, newKey)
+					klog.Infof("Appending %s to collisionMap", newKey.Pod)
+				}
+
+				key = newKey
+
+			} else {
+
+				klog.Infof("No previous collision recorded, detecting by UID comparison...")
+
+				if mapUID, ok := podUIDMap[key]; ok {
+
+					if mapUID != uid {
+
+						klog.Infof("UID for pod %s : %s does not match current UID %s; COLLISION", key.Pod, mapUID, uid)
+
+						newKey := newPodKey(cluster, namespace, pod+" "+uid)
+						klog.Infof("NewKey created as %s...", newKey.Pod)
+						newMapKey := newPodKey(key.Cluster, key.Namespace, key.Pod+" "+mapUID)
+						klog.Infof("NewMapKey to replace old key %s created as %s...", key.Pod, newMapKey.Pod)
+
+						podCollisionMap[key] = []podKey{newKey, newMapKey}
+
+						podUIDMap[newKey] = uid
+						podUIDMap[newMapKey] = mapUID
+
+						podMap[newMapKey] = podMap[key]
+						podMap[newMapKey].Key = newMapKey
+
+						delete(podUIDMap, key)
+						delete(podMap, key)
+
+						key = newKey
+
+					} else {
+						klog.Infof("UID match confirmed for pod %s, continuing with function...", key.Pod)
+					}
+
+				} else {
+
+					podUIDMap[key] = uid
+					klog.Infof("Pod not seen before, tracking UID...")
+				}
+
+			}
+
+		}
 
 		// allocStart and allocEnd are the timestamps of the first and last
 		// minutes the pod was running, respectively. We subtract one resolution
@@ -700,6 +800,7 @@ func applyPodResults(window kubecost.Window, resolution time.Duration, podMap ma
 		}
 
 		if pod, ok := podMap[key]; ok {
+			klog.Infof("-> Editing previously discovered pod %s", key.Pod)
 			// Pod has already been recorded, so update it accordingly
 			if allocStart.Before(pod.Start) {
 				pod.Start = allocStart
@@ -708,6 +809,7 @@ func applyPodResults(window kubecost.Window, resolution time.Duration, podMap ma
 				pod.End = allocEnd
 			}
 		} else {
+			klog.Infof("-> Adding new pod %s", key.Pod)
 			// Pod has not been recorded yet, so insert it
 			podMap[key] = &Pod{
 				Window:      window.Clone(),
@@ -873,7 +975,7 @@ func applyCPUCoresUsedMax(podMap map[podKey]*Pod, resCPUCoresUsedMax []*prom.Que
 	}
 }
 
-func applyRAMBytesAllocated(podMap map[podKey]*Pod, resRAMBytesAllocated []*prom.QueryResult) {
+func applyRAMBytesAllocated(podMap map[podKey]*Pod, resRAMBytesAllocated []*prom.QueryResult, podCollisionMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesAllocated {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -881,31 +983,52 @@ func applyRAMBytesAllocated(podMap map[podKey]*Pod, resRAMBytesAllocated []*prom
 			continue
 		}
 
-		pod, ok := podMap[key]
+		var pods []*Pod
+
+		mapPod, ok := podMap[key]
 		if !ok {
-			continue
+			klog.Infof("applyRAMBytesAllocated: Cannot find key %s in podMap", key.String())
+			if collidingPods, ok := podCollisionMap[key]; ok {
+				klog.Infof("FOUND IN COLLISIONMAP")
+				for _, collisionKey := range collidingPods {
+					collisionPod, ok := podMap[collisionKey]
+					if ok {
+						klog.Infof("DUPLICATING METRICS")
+						pods = append(pods, collisionPod)
+					}
+				}
+			} else {
+				continue
+			}
+		} else {
+			pods = append(pods, mapPod)
 		}
 
-		container, err := res.GetString("container")
-		if err != nil {
-			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM allocation query result missing 'container': %s", key)
-			continue
-		}
+		for _, pod := range pods {
 
-		if _, ok := pod.Allocations[container]; !ok {
-			pod.AppendContainer(container)
-		}
+			container, err := res.GetString("container")
+			if err != nil {
+				log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM allocation query result missing 'container': %s", key)
+				continue
+			}
 
-		ramBytes := res.Values[0].Value
-		hours := pod.Allocations[container].Minutes() / 60.0
-		pod.Allocations[container].RAMByteHours = ramBytes * hours
+			if _, ok := pod.Allocations[container]; !ok {
+				klog.Infof("Adding container to %s", pod.Key.String())
+				pod.AppendContainer(container)
+			}
 
-		node, err := res.GetString("node")
-		if err != nil {
-			log.Warningf("CostModel.ComputeAllocation: RAM allocation query result missing 'node': %s", key)
-			continue
+			ramBytes := res.Values[0].Value
+			hours := pod.Allocations[container].Minutes() / 60.0
+			pod.Allocations[container].RAMByteHours = ramBytes * hours
+
+			node, err := res.GetString("node")
+			if err != nil {
+				log.Warningf("CostModel.ComputeAllocation: RAM allocation query result missing 'node': %s", key)
+				continue
+			}
+			pod.Allocations[container].Properties.Node = node
+
 		}
-		pod.Allocations[container].Properties.Node = node
 	}
 }
 
