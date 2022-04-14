@@ -3,5 +3,11 @@
 *.log
 tmp/
 
+# ANTLR4 generated files are not necessary for the Go parser to work
+*.interp
+*.tokens
+
+# .java and .class files are for using grun to debug and are not needed for the
+# Go code.
 *.java
 *.class
