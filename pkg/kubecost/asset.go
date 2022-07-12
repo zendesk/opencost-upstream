@@ -2838,26 +2838,25 @@ func (as *AssetSet) accumulate(that *AssetSet) (*AssetSet, error) {
 	return acc, nil
 }
 
-
 type DiffKind string
 
 const (
-    DiffAdded DiffKind = "added"
-    DiffRemoved = "removed"
-	DiffChanged = "changed"
+	DiffAdded   DiffKind = "added"
+	DiffRemoved          = "removed"
+	DiffChanged          = "changed"
 )
 
 // Diff stores an object and a string that denotes whether that object was
 // added or removed from a set of those objects
 type Diff[T any] struct {
 	Entity T
-	Kind DiffKind
+	Kind   DiffKind
 }
 
 // DiffAsset takes two AssetSets and returns a map of keys to Diffs by checking
-// the keys of each AssetSet. If a key is not found or is found with a different total cost, 
-// a Diff is generated and added to the map. 
-func DiffAsset(before, after *AssetSet) map[string]Diff[Asset]{
+// the keys of each AssetSet. If a key is not found or is found with a different total cost,
+// a Diff is generated and added to the map.
+func DiffAsset(before, after *AssetSet) map[string]Diff[Asset] {
 	changedItems := map[string]Diff[Asset]{}
 
 	for assetKey1, asset1 := range before.assets {
@@ -2865,11 +2864,11 @@ func DiffAsset(before, after *AssetSet) map[string]Diff[Asset]{
 			d := Diff[Asset]{asset1, DiffRemoved}
 			changedItems[assetKey1] = d
 		} else if asset1.TotalCost() != asset2.TotalCost() {
-				d := Diff[Asset]{asset1, DiffChanged}
-				changedItems[assetKey1] = d
-			}
+			d := Diff[Asset]{asset1, DiffChanged}
+			changedItems[assetKey1] = d
+		}
 	}
-	
+
 	for assetKey2, asset2 := range after.assets {
 		if _, ok := before.assets[assetKey2]; !ok {
 			d := Diff[Asset]{asset2, DiffAdded}
