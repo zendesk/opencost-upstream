@@ -925,10 +925,10 @@ func (sas *SummaryAllocationSet) AggregateBy(aggregateBy []string, options *Allo
 			// Compute sharing coeffs by dividing the thus-far accumulated
 			// numerators by the now-finalized denominator.
 			for key := range sharingCoeffs {
-				if sharingCoeffs[key] > 0.0 {
+				if sharingCoeffs[key] >= 0.0 {
 					sharingCoeffs[key] /= sharingCoeffDenominator
 				} else {
-					log.Warnf("SummaryAllocation: detected illegal sharing coefficient for %s: %v (setting to zero)", key, sharingCoeffs[key])
+					log.Debugf("SummaryAllocation: detected illegal sharing coefficient for %s: %v (setting to zero)", key, sharingCoeffs[key])
 					sharingCoeffs[key] = 0.0
 				}
 			}
