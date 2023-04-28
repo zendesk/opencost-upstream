@@ -1,6 +1,8 @@
 package costmodel
 
 import (
+	"bytes"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -21,6 +23,7 @@ import (
 	promclient "github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -272,6 +275,18 @@ func initCostModelMetrics(clusterCache clustercache.ClusterCache, provider cloud
 			toRegisterGV = append(toRegisterGV, lbCostGv)
 		}
 
+		// THOMAS: Test registering a metric with duplicate labels
+		// panic: descriptor Desc{fqName: "testGv", help: "testGv duplicate label names", constLabels: {}, variableLabels: [hello hello world]} is invalid: duplicate label names
+
+		// testGv := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		// 	Name: "testGv",
+		// 	Help: "testGv duplicate label names",
+		// }, []string{"hello", "hello", "world"})
+		// toRegisterGV = append(toRegisterGV, testGv)
+
+		// THOMAS: Commenting out ".MustRegister()" ensures we do not emit the metric
+		// log.Info("VERBOSE: Metrics emission disabled")
+
 		// Register cost-model metrics for emission
 		for _, gv := range toRegisterGV {
 			prometheus.MustRegister(gv)
@@ -392,6 +407,9 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 	// wait for a reset to prevent a race between start and stop calls
 	cmme.runState.WaitForReset()
 
+	// THOMAS: Disable metric emission by passing cmme by value instead of by reference?
+	log.Info("VERBOSE: Entering metric emission function.")
+
 	// Check to see if we're already recording, and atomically advance the run state to start if we're not
 	if !cmme.runState.Start() {
 		log.Errorf("Attempted to start cost model metric recording when it's already running.")
@@ -426,6 +444,10 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 		}
 
 		for {
+
+			// THOMAS
+			log.Info("VERBOSE: Infinite loop, calculating metrics ...")
+
 			log.Debugf("Recording prices...")
 			podlist := cmme.KubeClusterCache.GetAllPods()
 			podStatus := make(map[string]v1.PodPhase)
@@ -754,6 +776,10 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 				}
 			}
 
+			// THOMAS: Print all the currently registered Prometheus metrics
+			metrics, _ := getPrometheusMetricsSnapshot()
+			log.Infof("VERBOSE: Metrics:\n%s\n", metrics)
+
 			select {
 			case <-time.After(time.Minute):
 			case <-cmme.runState.OnStop():
@@ -764,6 +790,25 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 	}()
 
 	return true
+}
+
+// THOMAS: Print all currently registered Prometheus metrics
+func getPrometheusMetricsSnapshot() (string, error) {
+	metricFamilies, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		return "", fmt.Errorf("error gathering metrics: %v", err)
+	}
+
+	var buf bytes.Buffer
+	enc := expfmt.NewEncoder(&buf, expfmt.FmtText)
+
+	for _, mf := range metricFamilies {
+		if err := enc.Encode(mf); err != nil {
+			return "", fmt.Errorf("error encoding metrics: %v", err)
+		}
+	}
+
+	return buf.String(), nil
 }
 
 // Stop halts the metrics emission loop after the current emission is completed
