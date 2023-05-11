@@ -1,4 +1,4 @@
-package gcp
+package cloud
 
 import (
 	"bytes"
@@ -68,7 +68,7 @@ func TestParseGCPProjectID(t *testing.T) {
 	}
 
 	for _, test := range cases {
-		result := ParseGCPProjectID(test.input)
+		result := parseGCPProjectID(test.input)
 		if result != test.expected {
 			t.Errorf("Input: %s, Expected: %s, Actual: %s", test.input, test.expected, result)
 		}
@@ -94,7 +94,7 @@ func TestGetUsageType(t *testing.T) {
 		},
 		{
 			input: map[string]string{
-				models.KarpenterCapacityTypeLabel: models.KarpenterCapacitySpotTypeValue,
+				KarpenterCapacityTypeLabel: KarpenterCapacitySpotTypeValue,
 			},
 			expected: "preemptible",
 		},

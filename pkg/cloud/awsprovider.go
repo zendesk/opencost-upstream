@@ -1,4 +1,4 @@
-package aws
+package cloud
 
 import (
 	"bytes"
@@ -178,12 +178,13 @@ type AWS struct {
 	SpotDataPrefix              string
 	ProjectID                   string
 	DownloadPricingDataLock     sync.RWMutex
-	Config                      models.ProviderConfig
-	ServiceAccountChecks        *models.ServiceAccountChecks
+	Config                      *ProviderConfig
+	serviceAccountChecks        *models.ServiceAccountChecks
 	clusterManagementPrice      float64
-	ClusterRegion               string
-	ClusterAccountID            string
+	clusterRegion               string
+	clusterAccountID            string
 	clusterProvisioner          string
+	*CustomProvider
 }
 
 // AWSAccessKey holds AWS credentials and fulfils the awsV2.CredentialsProvider interface
@@ -649,7 +650,7 @@ func (k *awsKey) getUsageType(labels map[string]string) string {
 		// We currently write out spot instances as "preemptible" in the pricing data, so these need to match
 		return PreemptibleType
 	}
-	if kLabel, ok := labels[models.KarpenterCapacityTypeLabel]; ok && kLabel == models.KarpenterCapacitySpotTypeValue {
+	if kLabel, ok := labels[KarpenterCapacityTypeLabel]; ok && kLabel == KarpenterCapacitySpotTypeValue {
 		return PreemptibleType
 	}
 	return ""
@@ -1365,7 +1366,7 @@ func (awsProvider *AWS) ClusterInfo() (map[string]string, error) {
 	m["name"] = clusterName
 	m["provider"] = kubecost.AWSProvider
 	m["account"] = clusterAccountID
-	m["region"] = awsProvider.ClusterRegion
+	m["region"] = awsProvider.clusterRegion
 	m["id"] = env.GetClusterID()
 	m["remoteReadEnabled"] = strconv.FormatBool(env.IsRemoteEnabled())
 	m["provisioner"] = awsProvider.clusterProvisioner
@@ -1402,7 +1403,7 @@ func (aws *AWS) getAWSAuth(forceReload bool, cp *models.CustomPricing) (string, 
 
 	// 1. Check config values first (set from frontend UI)
 	if cp.ServiceKeyName != "" && cp.ServiceKeySecret != "" {
-		aws.ServiceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
+		aws.serviceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
 			Message: "AWS ServiceKey exists",
 			Status:  true,
 		})
@@ -1412,7 +1413,7 @@ func (aws *AWS) getAWSAuth(forceReload bool, cp *models.CustomPricing) (string, 
 	// 2. Check for secret
 	s, _ := aws.loadAWSAuthSecret(forceReload)
 	if s != nil && s.AccessKeyID != "" && s.SecretAccessKey != "" {
-		aws.ServiceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
+		aws.serviceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
 			Message: "AWS ServiceKey exists",
 			Status:  true,
 		})
@@ -1421,12 +1422,12 @@ func (aws *AWS) getAWSAuth(forceReload bool, cp *models.CustomPricing) (string, 
 
 	// 3. Fall back to env vars
 	if env.GetAWSAccessKeyID() == "" || env.GetAWSAccessKeySecret() == "" {
-		aws.ServiceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
+		aws.serviceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
 			Message: "AWS ServiceKey exists",
 			Status:  false,
 		})
 	} else {
-		aws.ServiceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
+		aws.serviceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
 			Message: "AWS ServiceKey exists",
 			Status:  true,
 		})
@@ -2153,14 +2154,14 @@ func (aws *AWS) parseSpotData(bucket string, prefix string, projectID string, re
 	}
 	lso, err := cli.ListObjects(context.TODO(), ls)
 	if err != nil {
-		aws.ServiceAccountChecks.Set("bucketList", &models.ServiceAccountCheck{
+		aws.serviceAccountChecks.Set("bucketList", &models.ServiceAccountCheck{
 			Message:        "Bucket List Permissions Available",
 			Status:         false,
 			AdditionalInfo: err.Error(),
 		})
 		return nil, err
 	} else {
-		aws.ServiceAccountChecks.Set("bucketList", &models.ServiceAccountCheck{
+		aws.serviceAccountChecks.Set("bucketList", &models.ServiceAccountCheck{
 			Message: "Bucket List Permissions Available",
 			Status:  true,
 		})
@@ -2205,14 +2206,14 @@ func (aws *AWS) parseSpotData(bucket string, prefix string, projectID string, re
 		buf := manager.NewWriteAtBuffer([]byte{})
 		_, err := downloader.Download(context.TODO(), buf, getObj)
 		if err != nil {
-			aws.ServiceAccountChecks.Set("objectList", &models.ServiceAccountCheck{
+			aws.serviceAccountChecks.Set("objectList", &models.ServiceAccountCheck{
 				Message:        "Object Get Permissions Available",
 				Status:         false,
 				AdditionalInfo: err.Error(),
 			})
 			return nil, err
 		} else {
-			aws.ServiceAccountChecks.Set("objectList", &models.ServiceAccountCheck{
+			aws.serviceAccountChecks.Set("objectList", &models.ServiceAccountCheck{
 				Message: "Object Get Permissions Available",
 				Status:  true,
 			})
@@ -2288,7 +2289,7 @@ func (aws *AWS) ApplyReservedInstancePricing(nodes map[string]*models.Node) {
 }
 
 func (aws *AWS) ServiceAccountStatus() *models.ServiceAccountStatus {
-	return aws.ServiceAccountChecks.GetStatus()
+	return aws.serviceAccountChecks.GetStatus()
 }
 
 func (aws *AWS) CombinedDiscountForNode(instanceType string, isPreemptible bool, defaultDiscount, negotiatedDiscount float64) float64 {

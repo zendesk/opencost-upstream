@@ -8,9 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/azure"
-	"github.com/opencost/opencost/pkg/cloud/gcp"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/kubecost"
 
@@ -27,6 +25,9 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 )
+
+const KarpenterCapacityTypeLabel = "karpenter.sh/capacity-type"
+const KarpenterCapacitySpotTypeValue = "spot"
 
 // ClusterName returns the name defined in cluster info, defaulting to the
 // CLUSTER_ID environment variable
@@ -177,14 +178,14 @@ func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.
 		if apiKey == "" {
 			return nil, errors.New("Supply a GCP Key to start getting data")
 		}
-		return &gcp.GCP{
+		return &GCP{
 			Clientset:        cache,
 			APIKey:           apiKey,
 			Config:           NewProviderConfig(config, cp.configFileName),
-			ClusterRegion:    cp.region,
-			ClusterAccountID: cp.accountID,
-			ClusterProjectID: cp.projectID,
-			MetadataClient: metadata.NewClient(
+			clusterRegion:    cp.region,
+			clusterAccountID: cp.accountID,
+			clusterProjectID: cp.projectID,
+			metadataClient: metadata.NewClient(
 				&http.Client{
 					Transport: httputil.NewUserAgentTransport("kubecost", &http.Transport{
 						Dial: (&net.Dialer{
@@ -197,12 +198,12 @@ func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.
 		}, nil
 	case kubecost.AWSProvider:
 		log.Info("Found ProviderID starting with \"aws\", using AWS Provider")
-		return &aws.AWS{
+		return &AWS{
 			Clientset:            cache,
 			Config:               NewProviderConfig(config, cp.configFileName),
-			ClusterRegion:        cp.region,
-			ClusterAccountID:     cp.accountID,
-			ServiceAccountChecks: models.NewServiceAccountChecks(),
+			clusterRegion:        cp.region,
+			clusterAccountID:     cp.accountID,
+			serviceAccountChecks: models.NewServiceAccountChecks(),
 		}, nil
 	case kubecost.AzureProvider:
 		log.Info("Found ProviderID starting with \"azure\", using Azure Provider")
@@ -264,7 +265,7 @@ func getClusterProperties(node *v1.Node) clusterProperties {
 	if metadata.OnGCE() || strings.HasPrefix(providerID, "gce") {
 		cp.provider = kubecost.GCPProvider
 		cp.configFileName = "gcp.json"
-		cp.projectID = gcp.ParseGCPProjectID(providerID)
+		cp.projectID = parseGCPProjectID(providerID)
 	} else if strings.HasPrefix(providerID, "aws") {
 		cp.provider = kubecost.AWSProvider
 		cp.configFileName = "aws.json"
