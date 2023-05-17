@@ -73,6 +73,15 @@ func (aq *AthenaQuerier) Query(ctx context.Context, query string, fn func(*athen
 	return nil
 }
 
+func (aq *AthenaQuerier) GetAthenaClient() (*athena.Client, error) {
+	cfg, err := aq.Authorizer.CreateAWSConfig(aq.Region)
+	if err != nil {
+		return nil, err
+	}
+	cli := athena.NewFromConfig(cfg)
+	return cli, nil
+}
+
 // QueryAthenaPaginated executes athena query and processes results. An error from this method indicates a
 // FAILED_CONNECTION CloudConnectionStatus and should immediately stop the caller to maintain the correct CloudConnectionStatus
 func (aq *AthenaQuerier) queryAthenaPaginated(ctx context.Context, query string, fn func(*athena.GetQueryResultsOutput) bool) error {
@@ -96,7 +105,7 @@ func (aq *AthenaQuerier) queryAthenaPaginated(ctx context.Context, query string,
 	}
 
 	// Create Athena Client
-	cli, err := aq.AthenaConfiguration.GetAthenaClient()
+	cli, err := aq.GetAthenaClient()
 
 	// Query Athena
 	startQueryExecutionOutput, err := cli.StartQueryExecution(ctx, startQueryExecutionInput)
