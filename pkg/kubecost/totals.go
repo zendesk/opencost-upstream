@@ -184,6 +184,22 @@ func NewAllocationTotalsSet(window Window, byCluster, byNode map[string]*Allocat
 	}
 }
 
+func (ats *AllocationTotalsSet) TotalCostByCluster() float64 {
+	total := 0.0
+	for _, at := range ats.Cluster {
+		total += at.TotalCost()
+	}
+	return total
+}
+
+func (ats *AllocationTotalsSet) TotalCostByNode() float64 {
+	total := 0.0
+	for _, at := range ats.Node {
+		total += at.TotalCost()
+	}
+	return total
+}
+
 // AssetTotals represents aggregate costs of all Assets for a given
 // cluster or tuple of (cluster, node) between a given start and end time,
 // where the costs are aggregated per-resource. AssetTotals is designed
