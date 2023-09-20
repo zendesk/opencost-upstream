@@ -673,6 +673,9 @@ func (k *awsKey) getUsageType(labels map[string]string) string {
 	if kLabel, ok := labels[models.KarpenterCapacityTypeLabel]; ok && kLabel == models.KarpenterCapacitySpotTypeValue {
 		return PreemptibleType
 	}
+	if spotLabel, ok := labels[k.SpotLabelName]; ok && spotLabel == k.SpotLabelValue {
+		return PreemptibleType
+	}
 	return ""
 }
 
