@@ -205,6 +205,10 @@ func (pc *ProviderConfig) UpdateFromMap(a map[string]string) (*models.CustomPric
 	// Run our Update() method using SetCustomPricingField logic
 	return pc.Update(func(c *models.CustomPricing) error {
 		for k, v := range a {
+			if v == "" {
+				// Ignore missing values
+				continue
+			}
 			// Just so we consistently supply / receive the same values, uppercase the first letter.
 			kUpper := utils.ToTitle.String(k)
 			if kUpper == "CPU" || kUpper == "SpotCPU" || kUpper == "RAM" || kUpper == "SpotRAM" || kUpper == "GPU" || kUpper == "Storage" {
