@@ -102,7 +102,7 @@ func NewS3File(filePath string) (*S3File, error) {
 		return nil, fmt.Errorf("invalid s3 path: %s", filePath)
 	}
 
-	cfg, err := config.LoadDefaultConfig(context.Background())
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion("us-east-1"))
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func NewAltS3File(filePath string) (*S3File, error) {
 		return nil, fmt.Errorf("invalid s3 path: %s", filePath)
 	}
 
-	cfg, err := config.LoadDefaultConfig(context.Background())
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion("us-east-1"))
 	if err != nil {
 		return nil, err
 	}
