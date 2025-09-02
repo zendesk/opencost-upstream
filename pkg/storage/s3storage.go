@@ -220,6 +220,7 @@ func NewS3StorageWith(config S3Config) (*S3Storage, error) {
 			wrapCredentialsProvider(&credentials.IAM{
 				Client: &http.Client{
 					Transport: http.DefaultTransport,
+					Timeout:   5 * time.Second,
 				},
 				Endpoint: config.STSEndpoint,
 			}),

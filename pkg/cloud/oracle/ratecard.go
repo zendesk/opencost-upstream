@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/opencost/opencost/pkg/cloud/models"
 )
@@ -52,7 +53,7 @@ func NewRateCardStore(url, currencyCode string) *RateCardStore {
 	return &RateCardStore{
 		url:          url,
 		currencyCode: currencyCode,
-		client:       &http.Client{},
+		client:       &http.Client{Timeout: 10 * time.Second},
 		prices:       map[string]Price{},
 	}
 }
@@ -248,6 +249,7 @@ func (i Item) toRateCard() Price {
 			if price.Value > 0 {
 				unitPrice = price.Value
 				model = price.Model
+				break
 			}
 		}
 	}

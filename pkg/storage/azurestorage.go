@@ -469,7 +469,7 @@ func getContainerClient(conf AzureConfig) (*container.Client, error) {
 			Telemetry: policy.TelemetryOptions{
 				ApplicationID: "Thanos",
 			},
-			Transport: &http.Client{Transport: dt},
+			Transport: &http.Client{Transport: dt, Timeout: 30 * time.Second},
 		},
 	}
 

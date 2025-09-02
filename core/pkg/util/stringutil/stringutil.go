@@ -105,16 +105,16 @@ func RandSeq(n int) string {
 
 // FormatBytes takes a number of bytes and formats it as a string
 func FormatBytes(numBytes int64) string {
-	if numBytes > TiB {
+	if numBytes >= TiB {
 		return fmt.Sprintf("%.2fTiB", float64(numBytes)/TiB)
 	}
-	if numBytes > GiB {
+	if numBytes >= GiB {
 		return fmt.Sprintf("%.2fGiB", float64(numBytes)/GiB)
 	}
-	if numBytes > MiB {
+	if numBytes >= MiB {
 		return fmt.Sprintf("%.2fMiB", float64(numBytes)/MiB)
 	}
-	if numBytes > KiB {
+	if numBytes >= KiB {
 		return fmt.Sprintf("%.2fKiB", float64(numBytes)/KiB)
 	}
 	return fmt.Sprintf("%dB", numBytes)

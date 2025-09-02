@@ -38,6 +38,10 @@ func Retry[T any](ctx context.Context, f func() (T, error), attempts uint, delay
 
 		time.Sleep(d)
 
+		if d <= 0 {
+			// ensure a minimal backoff to avoid zero-duration rand.Int63n panic
+			d = 1 * time.Millisecond
+		}
 		jitter := time.Duration(rand.Int63n(int64(d))) // #nosec No need for a cryptographic strength random here
 		d = d + jitter/2
 	}
