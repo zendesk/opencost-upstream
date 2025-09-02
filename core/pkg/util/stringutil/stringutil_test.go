@@ -142,3 +142,25 @@ func BenchmarkStringBankFunc25PercentDuplicate(b *testing.B) {
 func BenchmarkStringBankFuncNoDuplicate(b *testing.B) {
 	benchmarkStringBank(b, 1_000_000, 1_000_000, false)
 }
+
+func TestFormatBytesThresholds(t *testing.T) {
+	cases := []struct{
+		in    int64
+		expect string
+	}{
+		{0, "0B"},
+		{1, "1B"},
+		{1023, "1023B"},
+		{1024, "1.00KiB"},
+		{1024*1024 - 1, "1024.00KiB"},
+		{1024*1024, "1.00MiB"},
+		{1024*1024*1024, "1.00GiB"},
+		{1024*1024*1024*1024, "1.00TiB"},
+	}
+	for _, c := range cases {
+		got := FormatBytes(c.in)
+		if got != c.expect {
+			t.Fatalf("FormatBytes(%d): expect %q, got %q", c.in, c.expect, got)
+		}
+	}
+}

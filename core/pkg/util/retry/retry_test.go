@@ -123,3 +123,20 @@ func TestCancelRetry(t *testing.T) {
 		t.Fatalf("Expected CancellationError, got: %s", e)
 	}
 }
+
+func TestRetryZeroDelayDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	var attempts uint = 3
+	calls := 0
+	f := func() (any, error) {
+		calls++
+		return nil, fmt.Errorf("fail")
+	}
+	_, err := Retry(context.Background(), f, attempts, 0)
+	if err == nil {
+		t.Fatalf("expected error with zero delay retries")
+	}
+	if calls != int(attempts) {
+		t.Fatalf("expected %d calls, got %d", attempts, calls)
+	}
+}

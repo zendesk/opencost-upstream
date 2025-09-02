@@ -148,6 +148,36 @@ func TestRCSEgressForRegion(t *testing.T) {
 	}
 }
 
+func TestToRateCardPicksFirstNonZero(t *testing.T) {
+	i := Item{
+		DisplayName: "test",
+		MetricName:  "unit",
+		CurrencyCodeLocalizations: []struct {
+			CurrencyCode string `json:"currencyCode"`
+			Prices       []struct {
+				Model string  `json:"model"`
+				Value float64 `json:"value"`
+			} `json:"prices"`
+		}{
+			{
+				CurrencyCode: "USD",
+				Prices: []struct {
+					Model string  `json:"model"`
+					Value float64 `json:"value"`
+				}{
+					{Model: "range1", Value: 0},
+					{Model: "range2", Value: 0.123},
+					{Model: "range3", Value: 0.456},
+				},
+			},
+		},
+	}
+	p := i.toRateCard()
+	if p.UnitPrice != 0.123 || p.Model != "range2" {
+		t.Fatalf("expected first non-zero price 0.123/model range2, got %v/%s", p.UnitPrice, p.Model)
+	}
+}
+
 func testSetupRateCardStore(t *testing.T) (*RateCardStore, *httptest.Server) {
 	pricesUSDBytes, err := os.ReadFile("test/prices_usd.json")
 	assert.NoError(t, err)
